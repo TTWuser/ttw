@@ -1,0 +1,105 @@
+stages:
+  - cpplint
+  - pycodestyle
+  - docs
+  - platform_compatible_tests
+  - ndk_versions_compatible_tests
+  - ops_test
+  - api_test
+  - python_tools_tests
+  - ops_benchmark
+  - extra_tests
+
+cpplint:
+  stage: cpplint
+  script:
+    - curl -o cpplint.py https://raw.githubusercontent.com/google/styleguide/gh-pages/cpplint/cpplint.py
+    - python cpplint.py --linelength=80 --counting=detailed $(find mace -name "*.h" -or -name "*.cc")
+
+pycodestyle:
+  stage: pycodestyle
+  script:
+    - pycodestyle $(find -name "*.py")
+
+docs:
+  stage: docs
+  script:
+    - cd docs
+    - make html
+    - CI_LATEST_OUTPUT_PATH=/mace-build-output/$CI_PROJECT_NAME/latest
+    - CI_JOB_OUTPUT_PATH=/mace-build-output/$CI_PROJECT_NAME/$CI_PIPELINE_ID
+    - rm -rf $CI_JOB_OUTPUT_PATH
+    - mkdir -p $CI_JOB_OUTPUT_PATH
+    - cp -r _build/html $CI_JOB_OUTPUT_PATH/docs
+    - rm -rf $CI_LATEST_OUTPUT_PATH
+    - mkdir -p $CI_LATEST_OUTPUT_PATH
+    - cp -r _build/html $CI_LATEST_OUTPUT_PATH/docs
+
+  artifacts:
+    paths:
+      - docs/_build
+
+ops_test:
+  stage: ops_test
+  script:
+    - if [ -z "$TARGET_SOCS" ]; then TARGET_SOCS=random; fi
+    - python tools/bazel_adb_run.py --target="//mace/ops:ops_test" --run_target=True --stdout_processor=unittest_stdout_processor --target_abis=armeabi-v7a,arm64-v8a --target_socs=$TARGET_SOCS
+    - python tools/bazel_adb_run.py --target="//mace/ops:ops_test" --run_target=True --stdout_processor=unittest_stdout_processor --target_abis=armeabi-v7a,arm64-v8a --target_socs=$TARGET_SOCS --enable_neon=false
+
+api_test:
+  stage: api_test
+  script:
+    - if [ -z "$TARGET_SOCS" ]; then TARGET_SOCS=random; fi
+    - python tools/bazel_adb_run.py --target="//mace/test:mace_api_test" --run_target=True --stdout_processor=unittest_stdout_processor --target_abis=armeabi-v7a,arm64-v8a --target_socs=$TARGET_SOCS
+    - python tools/bazel_adb_run.py --target="//mace/test:mace_api_mt_test" --run_target=True --stdout_processor=unittest_stdout_processor --target_abis=armeabi-v7a,arm64-v8a --target_socs=$TARGET_SOCS
+
+ops_benchmark:
+  stage: ops_benchmark
+  script:
+    - if [ -z "$TARGET_SOCS" ]; then TARGET_SOCS=random; fi
+    - python tools/bazel_adb_run.py --target="//mace/ops:ops_benchmark" --run_target=True --stdout_processor=ops_benchmark_stdout_processor --target_abis=armeabi-v7a,arm64-v8a --target_socs=$TARGET_SOCS --args="--filter=.*CONV.*"
+
+extra_tests:
+  stage: extra_tests
+  script:
+    - if [ -z "$TARGET_SOCS" ]; then TARGET_SOCS=random; fi
+    - python tools/bazel_adb_run.py --target="//mace/kernels:kernels_test" --run_target=True --stdout_processor=unittest_stdout_processor --target_abis=armeabi-v7a,arm64-v8a --target_socs=$TARGET_SOCS
+    - python tools/bazel_adb_run.py --target="//mace/utils:tuner_test" --run_target=True --stdout_processor=unittest_stdout_processor --target_abis=armeabi-v7a,arm64-v8a --target_socs=$TARGET_SOCS
+
+platform_compatible_tests:
+  stage: platform_compatible_tests
+  script:
+    - mkdir -p mace/codegen/version && bash mace/tools/git/gen_version_source.sh mace/codegen/version/version.cc
+    - mkdir -p mace/codegen/tuning && python mace/python/tools/binary_codegen.py --output_path=mace/codegen/tuning/tuning_params.cc
+    - bazel build mace/core:core
+
+ndk_versions_compatible_tests:
+  stage: ndk_versions_compatible_tests
+  script:
+    - DEFAULT_NDK_PATH=$ANDROID_NDK_HOME
+    - prefix_path=${DEFAULT_NDK_PATH%android-ndk-*}
+    - >
+      for ndk in android-ndk-r12b android-ndk-r15c android-ndk-r16;
+      do
+      new_ndk_path=${prefix_path}${ndk};
+      if [ "$new_ndk_path" != "$DEFAULT_NDK_PATH" ]; then
+        export ANDROID_NDK_HOME=$new_ndk_path;
+        export PATH=$ANDROID_NDK_HOME:$PATH;
+        echo "ndk path: $ANDROID_NDK_HOME";
+        if [ -z "$TARGET_SOCS" ]; then TARGET_SOCS=random; fi
+        python tools/bazel_adb_run.py --target="//mace/ops:ops_test" --run_target=True --stdout_processor=unittest_stdout_processor --target_abis=armeabi-v7a,arm64-v8a --target_socs=$TARGET_SOCS --args="--gtest_filter=ActivationOpTest*";
+        python tools/bazel_adb_run.py --target="//mace/ops:ops_test" --run_target=True --stdout_processor=unittest_stdout_processor --target_abis=armeabi-v7a,arm64-v8a --target_socs=$TARGET_SOCS --enable_neon=false --args="--gtest_filter=ActivationOpTest*";
+      fi
+      done
+    - export ANDROID_NDK_HOME=$DEFAULT_NDK_PATH
+    - export PATH=$ANDROID_NDK_HOME:$PATH
+
+python_tools_tests:
+  stage: python_tools_tests
+  script:
+    - pwd
+    - rm -rf mace-models
+    - GIT_SSH_COMMAND="ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no" git clone git@github.com:XiaoMi/mace-models.git
+    - CONF_FILE=mace-models/mobilenet-v2/mobilenet-v2.yml
+    - sh -c "python tools/converter.py build --config=${CONF_FILE} --disable_tuning && python tools/converter.py run --config=${CONF_FILE} --round=1 --validate && python tools/converter.py run --config=${CONF_FILE} --example --round=1 --validate" || exit 1
+    - rm -rf mace-models
