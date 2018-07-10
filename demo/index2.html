@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+    <style>
+        *{
+            margin: 0;
+            padding: 0;
+        }
+        #obox{
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            margin-left: -300px;
+            margin-top: -150px;
+        }
+        #obox .oimg{
+            width: 600px;
+            height: 300px;
+            position: relative;
+            left: 0;
+            top: 0;
+        }
+        #obox .oimg img{
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+           
+            transition:2s all ease;
+        }
+        #obox .obtn{
+            position: absolute;
+            left: 50%;
+            margin-left: -60px;
+        }
+        #obox .obtn button{
+            width: 30px;
+            height: 30px;
+            margin-left: 10px;
+            border-radius:100%;
+            outline: none;
+            
+        }
+        .active{
+         background:red;
+        }
+    </style>
+</head>
+<body>
+    <div id="obox">
+        <div class="oimg">
+            <img src="./img/2.jpg" alt="" style="z-index: 100;opacity: 100;">
+            <img src="./img/3.jpg" alt="">
+            <img src="./img/4.jpg" alt="">
+        </div>
+        <div class="obtn">   
+            <button class="active">1</button>
+            <button>2</button>
+            <button>3</button>
+        </div>
+    </div>
+</body>
+<script>
+    window.onload=function(){
+        var oBox=document.getElementById('obox');
+        var aBtn=oBox.getElementsByTagName('button');
+        var aImg=oBox.getElementsByTagName('img');
+        for(let i=0;i<aBtn.length;i++){
+            
+            aBtn[i].onclick=function(){
+                //所有都隐藏 自己显示
+
+                //自己的显示 其余的都清空
+                for(let i=0;i<aBtn.length;i++){
+                    aBtn[i].className='';
+                    aImg[i].style.opacity=0;
+                }
+                //给自己加上className
+                aImg[i].style.opacity=100;
+                this.className='active';
+            };
+        }
+    };
+</script>
+</html>
